@@ -1,13 +1,13 @@
 id: r1-tiny-train
-description: "One R1-tiny training step (global batch 32\xD7512) on Tier-0."
+description: One R1-tiny fp32 AdamW training step on Tier-0.
 owner: transformers-systems
 fixture: fixtures/r1_tiny.py::r1_tiny_report
-units:
-  flops: "1 MAC = 2 FLOP; backward = 2\xD7 forward"
-  memory: bytes
-numbers_hash: d40043d7ddfba518d13383378c978de8066eb168c0addf30700435e687a87ac3
+contracted:
+- params_total
+- train_state_bytes
+numbers_hash: d57fb46575871ebc115e1ad917844a7ff00cbae8ff49a3512d5ec685696a8204
 predicted:
   params_total: 6327552
-  flops_train_per_token: 47382528
-  flops_per_step: 776315338752
   train_state_bytes: 101240832
+  flops_train_per_token: 47382528
+  flops_per_step_bt32x512: 776315338752

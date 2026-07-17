@@ -1,12 +1,14 @@
-"""M3 Gate B — cross-world-size reshard via Distributed Checkpoint (DCP).
+"""M3 Gate B — cross-world-size Distributed-Checkpoint load (model + optimizer).
 
-Distinct from Gate A: a DCP checkpoint written under one world size must LOAD under a different
-world size with (i) exact state integrity BEFORE any new step and (ii) bounded divergence after.
-Uses real gloo multi-rank + torch.distributed.checkpoint. On Tier-0 the model is replicated
-across gloo/CPU ranks (single GPU); FSDP-sharded reshard is the Tier-1 extension. The invariant
-this pins: the checkpoint is world-size-agnostic.
+A DCP checkpoint written under one world size must LOAD under a different world size with exact
+state integrity for BOTH model weights and optimizer moments (Codex #5: weights alone is not
+enough). The result is broadcast so every rank exits nonzero on failure (Codex #3).
 
-Driver (dist/run_gate_b.sh): torchrun WS=2 save  →  torchrun WS=1 load+verify.
+Honest scope (Codex #4): on Tier-0 the model is **replicated** across gloo/CPU ranks (single
+GPU), so this pins DCP's world-size-agnostic *load* of replicated state + optimizer. Genuinely
+*sharded* FSDP2 resharding (partition metadata redistribution) is the Tier-1 extension.
+
+Driver: dist/run_gate_b.sh  (torchrun WS=2 save → torchrun WS=1 load, both exit-checked).
 """
 import os
 import sys
@@ -14,6 +16,7 @@ import sys
 import torch
 import torch.distributed as dist
 import torch.distributed.checkpoint as dcp
+from torch.distributed.checkpoint.state_dict import get_state_dict, set_state_dict
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from model.r1 import R1
@@ -25,58 +28,60 @@ REF = CKPT + "_ref.pt"
 
 def build():
     torch.manual_seed(0)
-    return R1(R1TinyConfig())  # CPU, identical on every rank (replicated)
+    m = R1(R1TinyConfig())
+    return m, torch.optim.AdamW(m.parameters(), lr=3e-4, betas=(0.9, 0.95))
 
 
-def fixed_data():
+def train(m, opt, steps):
     g = torch.Generator().manual_seed(123)
-    return torch.randint(0, R1TinyConfig().vocab_size, (16, 129), generator=g)
-
-
-def train(m, steps, data, start=0):
-    opt = torch.optim.AdamW(m.parameters(), lr=3e-4, betas=(0.9, 0.95))
+    d = torch.randint(0, R1TinyConfig().vocab_size, (16, 129), generator=g)
     for i in range(steps):
-        b = data[(start + i) % data.shape[0]].unsqueeze(0)
+        b = d[i % d.shape[0]].unsqueeze(0)
         _, loss = m(b[:, :-1], b[:, 1:])
         opt.zero_grad(); loss.backward(); opt.step()
-    return m
 
 
-def flat(m):
-    return torch.cat([p.detach().reshape(-1) for p in m.parameters()])
+def opt_moments(osd):
+    """Extract Adam m/v tensors from an optimizer state_dict for comparison."""
+    out = {}
+    for pid, st in osd.get("state", {}).items():
+        for k in ("exp_avg", "exp_avg_sq"):
+            if k in st:
+                out[f"{pid}.{k}"] = st[k]
+    return out
 
 
 def main(mode: str) -> int:
     dist.init_process_group("gloo")
     rank, ws = dist.get_rank(), dist.get_world_size()
-    data = fixed_data()
+    m, opt = build()
 
     if mode == "save":
-        m = train(build(), 10, data)
-        dcp.save({"model": m.state_dict()}, checkpoint_id=CKPT)
+        train(m, opt, 10)
+        msd, osd = get_state_dict(m, opt)
+        dcp.save({"model": msd, "optim": osd}, checkpoint_id=CKPT)
         if rank == 0:
-            torch.save(m.state_dict(), REF)   # plain reference for the integrity check
-            print(f"[save WS={ws}] DCP checkpoint written ({sum(p.numel() for p in m.parameters()):,} params)")
-    else:  # load at a (possibly different) world size
-        m = build()
-        sd = m.state_dict()
-        dcp.load({"model": sd}, checkpoint_id=CKPT)
-        m.load_state_dict(sd)
+            torch.save({"model": m.state_dict(), "optim": opt.state_dict()}, REF)
+            print(f"[save WS={ws}] DCP checkpoint (model+optim) written")
+        ok = True
+    else:  # load — possibly at a different world size
+        msd, osd = get_state_dict(m, opt)
+        dcp.load({"model": msd, "optim": osd}, checkpoint_id=CKPT)
+        set_state_dict(m, opt, model_state_dict=msd, optim_state_dict=osd)
+        ok = True
         if rank == 0:
-            ref_sd = torch.load(REF)
-            integrity = all(torch.equal(sd[k], ref_sd[k]) for k in sd)
-            # bounded divergence: K steps from the reshard-loaded model vs a ref-loaded model
-            ref_m = build(); ref_m.load_state_dict(ref_sd)
-            train(m, 5, data, start=10); train(ref_m, 5, data, start=10)
-            div = (flat(m) - flat(ref_m)).abs().max().item()
-            ok = integrity and div <= 1e-6
-            print(f"[load WS={ws}] state integrity: {integrity} | post-reshard divergence: {div:.2e} "
-                  f"(budget 1e-6) -> Gate B {'HOLDS' if ok else 'FAILED'}")
-            with open(CKPT + "_result", "w") as fh:
-                fh.write("PASS" if ok else "FAIL")
-    dist.barrier()
-    dist.destroy_process_group()
-    return 0
+            ref = torch.load(REF)
+            model_ok = all(torch.equal(m.state_dict()[k], ref["model"][k]) for k in ref["model"])
+            got, want = opt_moments(opt.state_dict()), opt_moments(ref["optim"])
+            optim_ok = got.keys() == want.keys() and all(torch.equal(got[k], want[k]) for k in got) and len(got) > 0
+            ok = model_ok and optim_ok
+            print(f"[load WS={ws}] model integrity: {model_ok} | optimizer-moment integrity: {optim_ok} "
+                  f"({len(got)} moment tensors) -> Gate B {'HOLDS' if ok else 'FAILED'}")
+
+    flag = torch.tensor([1 if ok else 0])
+    dist.broadcast(flag, src=0)          # every rank learns the rank-0 verdict
+    dist.barrier(); dist.destroy_process_group()
+    return 0 if bool(flag.item()) else 1
 
 
 if __name__ == "__main__":
