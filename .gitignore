@@ -7,3 +7,5 @@ artifacts/
 .pytest_cache/
 uv.lock
 .venv_stale/
+r0/corpus/
+bench/reports/

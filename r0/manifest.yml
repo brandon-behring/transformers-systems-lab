@@ -1,0 +1,31 @@
+schema: r0/1
+dataset:
+  source: HuggingFaceFW/fineweb-edu
+  config: sample-10BT
+  split: train
+  n_docs: 8000
+  license: ODC-By-1.0
+  corpus_sha256: 57c5b17de4a62e8a5a3f8d51575fd679ad4494097a8808cfd51716432fa98bd9
+  corpus_bytes: 38026333
+tokenizer:
+  kind: byte-level-BPE
+  vocab_size: 8192
+  actual_vocab: 8192
+  special_tokens:
+  - <|endoftext|>
+  - <|pad|>
+  - <page>
+  - </page>
+  - <region>
+  - <table>
+  - <tr>
+  - <td>
+  - <formula>
+  - <eos_doc>
+  tokenizer_sha256: c20d11df5909c90ed85609c56e40c3834037a1b681bdcdbc361d9ecb06b09142
+batches:
+  context_len: 512
+  n_sequences: 256
+  dtype: uint16
+  batches_sha256: 9eba0f961afda02bb2b13d4c311ed552f9d1dde1e1de32421e1dacf3fff1460c
+normalization: strip + newline->space per doc; NFC implicit via UTF-8

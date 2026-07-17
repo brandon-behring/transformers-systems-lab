@@ -1,0 +1,13 @@
+# gitleaks config for transformers-systems-lab.
+# Extends the default ruleset; allowlists content-integrity digests (sha256) that appear in
+# R0/scenario manifests — these are reproducibility hashes, not secrets. The generic-api-key
+# rule otherwise false-positives on e.g. `tokenizer_sha256:` (the substring "token" + high entropy).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "sha256 content digests in manifests/scenarios are integrity hashes, not secrets"
+regexTarget = "line"
+regexes = [
+  '''(sha256|_hash|numbers_hash):\s*[0-9a-f]{64}''',
+]
