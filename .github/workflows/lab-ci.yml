@@ -1,0 +1,21 @@
+name: lab-ci
+# CPU-PR lane: the pure-stdlib governance tests run on hosted CI. The torch/GPU labs
+# (M1b, M2 Triton, M3 gates, M4 serve, VLM spike) run locally on Tier-0 (no GPU CI runner).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cpu-stdlib:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Accounting golden + numbers contract (stdlib)
+        run: |
+          python tests/test_r1_tiny_fixture.py     # params/FLOPs/memory golden
+          python tests/test_numbers_contract.py    # scenario/report validator (negative-tested)
