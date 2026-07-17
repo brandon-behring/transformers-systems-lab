@@ -8,6 +8,7 @@ dependencies = [
     "triton==3.7.1",
     "numpy",
     "pytest",
+    "pyyaml",          # scenario records (the numbers contract)
 ]
 
 # Tier-0 = single RTX 2070 SUPER, 8 GB (~4 GB usable after desktop). Real multi-GPU /
