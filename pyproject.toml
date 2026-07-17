@@ -1,0 +1,14 @@
+[project]
+name = "transformers-systems-lab"
+version = "0.0.1"
+description = "Runnable, version-pinned labs for the Transformer Systems Engineering guide."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "torch==2.13.0",   # cu130 wheel; runs on the Tier-0 RTX 2070 SUPER (Turing sm_75)
+    "triton==3.7.1",
+    "numpy",
+    "pytest",
+]
+
+# Tier-0 = single RTX 2070 SUPER, 8 GB (~4 GB usable after desktop). Real multi-GPU /
+# FA2-3 / 7B-VLM numbers are Tier-1 (the scale-tier machine), deferred. See reference-model.md §7.
