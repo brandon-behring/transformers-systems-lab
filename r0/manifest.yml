@@ -28,4 +28,4 @@ batches:
   n_sequences: 256
   dtype: uint16
   batches_sha256: 9eba0f961afda02bb2b13d4c311ed552f9d1dde1e1de32421e1dacf3fff1460c
-normalization: strip + newline->space per doc; NFC implicit via UTF-8
+normalization: strip + newline->space per doc; no Unicode normalization applied (NFC per contract §2.2 deferred — book ADR 0002)

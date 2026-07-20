@@ -15,7 +15,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install pyyaml
-      - name: Accounting golden + numbers contract (stdlib)
+      - name: Accounting golden + numbers contract + R0 batch golden (stdlib)
         run: |
           python tests/test_r1_tiny_fixture.py     # params/FLOPs/memory golden
           python tests/test_numbers_contract.py    # scenario/report validator (negative-tested)
+          python tests/test_r0_batches.py          # training-input shape/dtype/id-range/sha256 golden

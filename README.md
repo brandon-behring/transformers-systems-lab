@@ -27,5 +27,5 @@ uv pip install torch==2.13.0 triton==3.7.1 numpy pytest
 - **M1a** ✓ R1-tiny calc fixture + golden (params 6,327,552 / 47.4M FLOPs·tok⁻¹).
 - **M1b** ✓ R1-tiny torch module (forward/train/generate/checkpoint) — verified on the 2070.
 - **M2** Triton FlashAttention (correctness-parity on sm_75) + one compiled/fused op.
-- **M3** gloo multi-rank FSDP2 + DCP — Gate A (bitwise same-topology replay) / Gate B (bounded-divergence reshard).
+- **M3** gloo multi-rank DCP — Gate A (bitwise same-topology replay, CPU + deterministic algorithms) / Gate B (exact cross-world-size reshard of replicated state; FSDP2 sharding designed-for, deferred).
 - **M4** minimal paged-KV server (prefill/decode split).
